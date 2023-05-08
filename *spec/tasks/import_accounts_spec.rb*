@@ -1,0 +1,22 @@
+
+```ruby
+require 'rails_helper'
+require 'rake'
+
+RSpec.describe 'accounts:import' do
+  let(:task) { Rake::Task['accounts:import'] }
+
+  before do
+    Rails.application.load_tasks
+  end
+
+  after do
+    task.reenable
+  end
+
+  it 'imports accounts from a CSV file' do
+    expect_any_instance_of(CsvImporterService).to receive(:import_accounts).and_return({ success: 2, failed: 0, duplicates: 0 })
+    expect { task.invoke }.to output("Import summary:\n  - Successful records: 2\n  - Failed records: 0\n  - Duplicate records: 0\n").to_stdout
+  end
+end
+```
