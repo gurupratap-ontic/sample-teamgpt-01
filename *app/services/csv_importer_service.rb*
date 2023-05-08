@@ -1,0 +1,32 @@
+
+```ruby
+require 'csv'
+
+class CsvImporterService
+  def initialize(file_path)
+    @file_path = file_path
+  end
+
+  def import_accounts
+    success_count = 0
+    failed_count = 0
+    duplicate_count = 0
+
+    CSV.foreach(@file_path, headers: true) do |row|
+      account = Account.new(row.to_hash)
+      if account.save
+        success_count += 1
+      elsif account.errors.details[:account_number].any? { |error| error[:error] == :taken }
+        duplicate_count += 1
+      else
+        failed_count += 1
+      end
+    end
+
+    { success: success_count, failed: failed_count, duplicates: duplicate_count }
+  rescue StandardError => e
+    { error: e.message }
+  end
+end
+```
+#####
