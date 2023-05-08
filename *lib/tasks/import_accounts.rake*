@@ -1,0 +1,19 @@
+
+namespace :accounts do
+  desc 'Import accounts from a CSV file'
+  task import: :environment do
+    puts 'Please provide the CSV file path:'
+    file_path = gets.chomp
+
+    result = CsvImporterService.new(file_path).import_accounts
+
+    if result[:error]
+      puts "Error: #{result[:error]}"
+    else
+      puts "Import summary:"
+      puts "  - Successful records: #{result[:success]}"
+      puts "  - Failed records: #{result[:failed]}"
+      puts "  - Duplicate records: #{result[:duplicates]}"
+    end
+  end
+end
