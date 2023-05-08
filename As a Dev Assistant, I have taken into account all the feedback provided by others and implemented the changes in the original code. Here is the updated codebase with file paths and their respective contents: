@@ -1,0 +1,120 @@
+
+*app/models/bank_account.rb*
+
+```ruby
+class BankAccount < ApplicationRecord
+  validates :customer_name, presence: true
+  validates :account_number, presence: true, uniqueness: true
+  validates :account_type, presence: true, inclusion: { in: %w[savings current] }
+  validates :balance, presence: true, numericality: { greater_than_or_equal_to: 0 }
+  validates :IFSC_code, presence: true
+end
+```
+##### 
+*app/services/bank_account_import_service.rb*
+
+```ruby
+require 'csv'
+
+class BankAccountImportService
+  REQUIRED_HEADERS = %i[customer_name account_number account_type balance IFSC_code].freeze
+
+  def initialize(file_path)
+    @file_path = file_path
+  end
+
+  def import
+    begin
+      CSV.foreach(@file_path, headers: true, header_converters: :symbol, encoding: 'UTF-8') do |row|
+        if missing_headers(row)
+          Rails.logger.error "CSV file is missing required headers: #{missing_headers(row).join(', ')}"
+          break
+        end
+
+        bank_account_params = row.to_h.slice(*REQUIRED_HEADERS)
+        bank_account = BankAccount.new(bank_account_params)
+
+        if bank_account.valid?
+          bank_account.save!
+        else
+          Rails.logger.error "Failed to import bank account: #{bank_account.errors.full_messages.join(', ')}"
+        end
+      end
+
+    rescue StandardError => error
+      Rails.logger.error "BankAccountImportService error: #{error.message}\n#{error.backtrace.join("\n")}"
+    end
+  end
+
+  private
+
+  def missing_headers(row)
+    REQUIRED_HEADERS - row.headers
+  end
+end
+```
+##### 
+*lib/tasks/import.rake*
+
+```ruby
+namespace :import do
+  task :bank_accounts, [:file_path] => :environment do |_task, args|
+    if args[:file_path].present? && File.size(args[:file_path]) <= 10.megabytes
+      BankAccountImportService.new(args[:file_path]).import
+      puts 'Bank account data has been imported.'
+    else
+      puts "Please provide a valid CSV file path (max size: 10 MB)."
+    end
+  end
+end
+```
+##### 
+*spec/models/bank_account_spec.rb*
+
+```ruby
+require 'rails_helper'
+
+RSpec.describe BankAccount, type: :model do
+  it { should validate_presence_of(:customer_name) }
+  it { should validate_presence_of(:account_number) }
+  it { should validate_uniqueness_of(:account_number) }
+  it { should validate_presence_of(:account_type) }
+  it { should validate_inclusion_of(:account_type).in_array(%w[savings current]) }
+  it { should validate_presence_of(:balance) }
+  it { should validate_numericality_of(:balance).is_greater_than_or_equal_to(0) }
+  it { should validate_presence_of(:IFSC_code) }
+end
+```
+##### 
+*spec/services/bank_account_import_service_spec.rb*
+
+```ruby
+require 'rails_helper'
+
+RSpec.describe BankAccountImportService, type: :service do
+  let(:csv_file_path) { 'spec/fixtures/bank_accounts.csv' }
+
+  it 'imports bank account data from a valid CSV file' do
+    expect { BankAccountImportService.new(csv_file_path).import }.to change { BankAccount.count }.by(2)
+  end
+
+  it 'handles invalid CSV headers and logs the error' do
+    allow(Rails.logger).to receive(:error)
+    BankAccountImportService.new(csv_file_path).import
+    expect(Rails.logger).to have_received(:error).with(/CSV file is missing required headers:/)
+  end
+
+  it 'handles invalid data and logs the error' do
+    allow(Rails.logger).to receive(:error)
+    BankAccountImportService.new(csv_file_path).import
+    expect(Rails.logger).to have_received(:error).with(/Failed to import bank account:/)
+  end
+
+  it 'handles exceptions and logs the error with backtrace' do
+    allow(CSV).to receive(:foreach).and_raise(StandardError, 'CSV error')
+    allow(Rails.logger).to receive(:error)
+    BankAccountImportService.new(csv_file_path).import
+    expect(Rails.logger).to have_received(:error).with(/BankAccountImportService error: CSV error/)
+  end
+end
+```
