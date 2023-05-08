@@ -1,0 +1,23 @@
+
+require 'rails_helper'
+
+RSpec.describe CsvImporterService, type: :service do
+  describe '#import_accounts' do
+    let(:file_path) { 'spec/fixtures/accounts.csv' }
+    let(:service) { CsvImporterService.new(file_path) }
+
+    context 'with a valid CSV file' do
+      it 'imports the accounts and returns the summary' do
+        expect { service.import_accounts }.to change { Account.count }.by(2)
+        expect(service.import_accounts).to eq({ success: 2, failed: 0, duplicates: 0 })
+      end
+    end
+
+    context 'with an invalid file path' do
+      let(:file_path) { 'invalid_file_path' }
+      it 'returns an error message' do
+        expect(service.import_accounts).to eq({ error: "No such file or directory @ rb_sysopen - invalid_file_path" })
+      end
+    end
+  end
+end
