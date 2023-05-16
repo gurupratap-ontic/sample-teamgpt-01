@@ -1,0 +1,15 @@
+namespace :import do
+  desc 'Import bank accounts from a CSV file'
+  task bank_accounts: :environment do
+    print 'Please enter the file path of the CSV file to import: '
+    file_path = STDIN.gets.chomp
+
+    if File.exist?(file_path)
+      import_service = BankAccountImportService.new(file_path)
+      import_service.import_data
+      puts "Import completed: #{@import_service.imported} records imported, #{@import_service.skipped} records skipped"
+    else
+      puts 'Invalid file path. Please try again. Make sure the file exists and the path is correct.'
+    end
+  end
+end
