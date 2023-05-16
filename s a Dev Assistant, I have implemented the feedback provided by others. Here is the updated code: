@@ -1,0 +1,169 @@
+
+*app/models/bank_account.rb*
+
+class BankAccount < ApplicationRecord
+  validates :customer_name, presence: true
+  validates :account_number, presence: true, uniqueness: { case_sensitive: false }
+  validates :account_type, presence: true, inclusion: { in: %w[Savings Current] }
+  validates :balance, presence: true, numericality: true
+  validates :IFSC_code, presence: true
+end
+ 
+*app/services/bank_account_csv_importer.rb*
+
+require 'csv'
+
+class BankAccountCsvImporter
+  def initialize(file_path, options = {})
+    @file_path = file_path
+    @options = options
+  end
+
+  def import
+    errors = []
+    processed_account_numbers = Set.new
+
+    CSV.foreach(@file_path, headers: true, col_sep: @options[:col_sep] || ',') do |row|
+      bank_account_data = row.to_hash
+      validation_errors = validate_bank_account_data(bank_account_data)
+      
+      if validation_errors.empty?
+        account_number = bank_account_data['account_number']
+
+        if processed_account_numbers.include?(account_number)
+          errors << "Duplicate account number '#{account_number}' in the CSV file"
+        else
+          processed_account_numbers.add(account_number)
+          bank_account = BankAccount.find_or_initialize_by(account_number: account_number)
+          bank_account.assign_attributes(bank_account_data)
+        
+          if bank_account.save
+            Rails.logger.info("Imported bank account #{account_number}")
+          else
+            errors << "Error saving bank account #{account_number}: #{bank_account.errors.full_messages.join(', ')}"
+          end
+        end
+      else
+        errors.concat(validation_errors)
+      end
+    end
+
+    errors
+  end
+
+  private
+
+  def validate_bank_account_data(data)
+    errors = []
+    
+    if data['customer_name'].blank? ||
+       data['account_number'].blank? ||
+       data['account_type'].blank? ||
+       data['balance'].blank? ||
+       data['IFSC_code'].blank?
+       errors << "Missing required fields in the row: #{data}"
+    end
+
+    if data['account_type'].present? && !%w[Savings Current].include?(data['account_type'])
+      errors << "Invalid account type '#{data['account_type']}' for account #{data['account_number']}"
+    end
+
+    if data['balance'].present? && !valid_numerical_value?(data['balance'])
+      errors << "Invalid balance '#{data['balance']}' for account #{data['account_number']}"
+    end
+
+    errors
+  end
+
+  def valid_numerical_value?(value)
+    BigDecimal(value)
+    true
+  rescue ArgumentError
+    false
+  end
+end
+ 
+*lib/tasks/import.rake*
+
+namespace :import do
+  desc 'Import bank accounts from a CSV file'
+  task :bank_accounts, [:file_path, :col_sep] => :environment do |_task, args|
+    file_path = args[:file_path]
+    
+    unless File.exist?(file_path)
+      puts "File not found: #{file_path}"
+      exit
+    end
+
+    importer = BankAccountCsvImporter.new(file_path, col_sep: args[:col_sep])
+    errors = importer.import
+
+    if errors.empty?
+      puts 'Bank accounts imported successfully.'
+    else
+      puts 'Errors occurred during import:'
+      errors.each { |error| puts " - #{error}" }
+    end
+  end
+end
+ 
+*spec/models/bank_account_spec.rb*
+
+require 'rails_helper'
+
+RSpec.describe BankAccount, type: :model do
+  it { should validate_presence_of(:customer_name) }
+  it { should validate_presence_of(:account_number) }
+  it { should validate_uniqueness_of(:account_number).case_insensitive }
+  it { should validate_presence_of(:account_type) }
+  it { should validate_inclusion_of(:account_type).in_array(%w[Savings Current]) }
+  it { should validate_presence_of(:balance) }
+  it { should validate_numericality_of(:balance) }
+  it { should validate_presence_of(:IFSC_code) }
+end
+ 
+*spec/services/bank_account_csv_importer_spec.rb*
+
+require 'rails_helper'
+
+RSpec.describe BankAccountCsvImporter, type: :service do
+  let(:file_path) { 'spec/fixtures/bank_accounts.csv' }
+  let(:importer) { BankAccountCsvImporter.new(file_path) }
+
+  describe '#import' do
+    context 'with a valid CSV file' do
+      it 'creates or updates bank account records in the database' do
+        expect { importer.import }.to change { BankAccount.count }
+      end
+
+      it 'returns an empty error array' do
+        errors = importer.import
+        expect(errors).to be_empty
+      end
+    end
+
+    context 'with an invalid CSV file' do
+      let(:file_path) { 'spec/fixtures/invalid_bank_accounts.csv' }
+
+      it 'does not create or update bank account records in the database' do
+        expect { importer.import }.not_to change { BankAccount.count }
+      end
+
+      it 'returns an array of error messages' do
+        errors = importer.import
+        expect(errors).not_to be_empty
+      end
+    end
+
+    context 'with a CSV file containing duplicate account numbers' do
+      let(:file_path) { 'spec/fixtures/duplicate_bank_accounts.csv' }
+
+      it 'returns an array of error messages for duplicate account numbers' do
+        errors = importer.import
+        expect(errors).not_to be_empty
+        expect(errors.first).to match(/Duplicate account number/)
+      end
+    end
+  end
+end
+```
