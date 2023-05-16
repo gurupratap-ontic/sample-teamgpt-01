@@ -1,0 +1,91 @@
+
+Here's the updated codebase addressing the feedback:
+
+/app/models/bank_account.rb
+class BankAccount < ApplicationRecord
+  validates :customer_name, presence: true
+  validates :account_number, presence: true, uniqueness: true, length: { maximum: 20 }
+  validates :account_type, presence: true, inclusion: { in: %w(savings current) }
+  validates :balance, presence: true, numericality: { greater_than_or_equal_to: 0 }
+  validates :IFSC_code, presence: true, uniqueness: true, format: { with: /\A[A-Z]{4}\d{7}\z/ }
+end
+ 
+/app/services/bank_account_importer.rb
+require 'csv'
+
+class BankAccountImporter
+  class InvalidCSVError < StandardError; end
+
+  def initialize(file_path)
+    @file_path = file_path
+  end
+
+  def import
+    CSV.foreach(@file_path, headers: true, header_converters: :symbol).with_index(2) do |row, row_num|
+      validate_row!(row, row_num)
+      BankAccount.create!(
+        customer_name: row[:customer_name],
+        account_number: row[:account_number],
+        account_type: row[:account_type],
+        balance: row[:balance].to_f,
+        IFSC_code: row[:IFSC_code]
+      )
+    end
+  rescue Errno::ENOENT
+    raise InvalidCSVError, "CSV file not found at #{@file_path}"
+  rescue CSV::MalformedCSVError => e
+    raise InvalidCSVError, "Malformed CSV file: #{e.message}"
+  end
+
+  private
+
+  def validate_row!(row, row_num)
+    raise InvalidCSVError, "Missing data at row #{row_num}" if row.fields.any?(&:nil?)
+
+    raise InvalidCSVError, "Invalid account type at row #{row_num}" unless %w(savings current).include?(row[:account_type])
+    
+    raise InvalidCSVError, "Invalid IFSC code format at row #{row_num}" unless row[:IFSC_code].match(/\A[A-Z]{4}\d{7}\z/)
+  end
+end
+ 
+/lib/tasks/import.rake
+namespace :import do
+  desc 'Import bank accounts from CSV file'
+  task :bank_accounts, [:file_path] => :environment do |_task, args|
+    file_path = args[:file_path]
+
+    if file_path.nil?
+      puts 'Error: Please provide a file path as an argument.'
+      exit 1
+    end
+
+    begin
+      BankAccountImporter.new(file_path).import
+      puts 'Bank accounts imported successfully.'
+    rescue BankAccountImporter::InvalidCSVError => e
+      puts "Error: #{e.message}"
+    end
+  end
+end
+ 
+/spec/models/bank_account_spec.rb
+require 'rails_helper'
+
+RSpec.describe BankAccount, type: :model do
+  # Add appropriate tests for validations and unique constraints
+end
+ 
+/spec/services/bank_account_importer_spec.rb
+require 'rails_helper'
+
+RSpec.describe BankAccountImporter, type: :service do
+  # Add appropriate tests for valid data, missing data, and invalid data scenarios
+end
+ 
+/spec/tasks/import_bank_accounts_spec.rb
+require 'rails_helper'
+require 'rake'
+
+RSpec.describe 'import:bank_accounts' do
+  # Add appropriate tests for valid file path, file not found, and issues with the BankAccountImporter
+end
