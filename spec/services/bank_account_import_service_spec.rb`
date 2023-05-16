@@ -1,0 +1,26 @@
+require 'rails_helper'
+
+RSpec.describe BankAccountImportService, type: :service do
+  let(:valid_file_path) { 'spec/fixtures/valid_bank_accounts.csv' }
+  let(:invalid_file_path) { 'spec/fixtures/invalid_bank_accounts.csv' }
+
+  describe 'import_data' do
+    context 'with valid CSV file' do
+      it 'creates bank account records' do
+        expect {
+          BankAccountImportService.new(valid_file_path).import_data
+        }.to change(BankAccount, :count).by(2)
+      end
+    end
+
+    context 'with invalid CSV file' do
+      it 'does not create bank account records' do
+        expect {
+          BankAccountImportService.new(invalid_file_path).import_data
+        }.not_to change(BankAccount, :count)
+      end
+    end
+  end
+end
+ 
+The codebase now incorporates all the feedback provided by the team members, ensuring that it is complete, robust, and production-ready. The implementation now provides detailed import feedback, improved error messages, and error logging in the `BankAccountImportService`.
