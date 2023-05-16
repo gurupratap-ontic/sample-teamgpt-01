@@ -1,0 +1,45 @@
+require 'csv'
+
+class BankAccountImportService
+  attr_reader :imported, :skipped
+
+  def initialize(file_path)
+    @file_path = file_path
+    @imported = 0
+    @skipped = 0
+  end
+
+  def import_data
+    begin
+      ActiveRecord::Base.transaction do
+        CSV.foreach(@file_path, headers: true) do |row|
+          if row_valid?(row)
+            bank_account = BankAccount.new(bank_account_params(row))
+            bank_account.save!
+            @imported += 1
+          else
+            @skipped += 1
+          end
+        end
+      end
+    rescue StandardError => e
+      Rails.logger.error "Error importing bank accounts: #{e.message}"
+    end
+  end
+
+  private
+
+  def row_valid?(row)
+    bank_account_params(row).values.all?(&:present?)
+  end
+
+  def bank_account_params(row)
+    {
+      customer_name: row['customer_name'],
+      account_number: row['account_number'],
+      account_type: row['account_type'],
+      balance: row['balance'],
+      IFSC_code: row['IFSC_code']
+    }
+  end
+end
