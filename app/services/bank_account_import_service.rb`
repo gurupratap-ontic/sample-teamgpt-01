@@ -1,0 +1,21 @@
+require 'csv'
+
+class BankAccountImportService
+  def import_from_csv(file_path)
+    summary = { imported: 0, skipped: 0, failed: [] }
+
+    CSV.foreach(file_path, headers: true) do |row|
+      account = BankAccount.new(row.to_hash)
+
+      if account.valid?
+        account.save
+        summary[:imported] += 1
+      else
+        summary[:skipped] += 1
+        summary[:failed] << { row: row, errors: account.errors.full_messages }
+      end
+    end
+
+    summary
+  end
+end
