@@ -1,0 +1,23 @@
+require 'rails_helper'
+
+RSpec.describe BankAccountImportService, type: :service do
+  let(:import_service) { BankAccountImportService.new }
+  let(:csv_file_path) { Rails.root.join('spec', 'fixtures', 'bank_account_data.csv') }
+
+  describe '#import_from_csv' do
+    it 'imports valid records' do
+      summary = import_service.import_from_csv(csv_file_path)
+
+      expect(summary[:imported]).to be > 0
+      expect(BankAccount.count).to eq(summary[:imported])
+    end
+
+    it 'skips invalid records and provides failure details' do
+      summary = import_service.import_from_csv(csv_file_path)
+
+      expect(summary[:skipped]).to be > 0
+      expect(summary[:failed].length).to eq(summary[:skipped])
+    end
+  end
+end
+```
