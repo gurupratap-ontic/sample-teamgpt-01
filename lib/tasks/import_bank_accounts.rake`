@@ -1,0 +1,23 @@
+namespace :import do
+  desc 'Import bank accounts from CSV file'
+  task bank_accounts: :environment do
+    file_path = ENV['CSV_FILE_PATH']
+
+    if file_path.blank?
+      puts 'Please provide the CSV file path with CSV_FILE_PATH environment variable'
+      exit
+    end
+
+    import_service = BankAccountImportService.new
+    summary = import_service.import_from_csv(file_path)
+
+    puts "Import summary:"
+    puts "  Imported: #{summary[:imported]}"
+    puts "  Skipped: #{summary[:skipped]}"
+    puts "  Failed:"
+    summary[:failed].each do |failed_record|
+      puts "    Row: #{failed_record[:row]}"
+      puts "    Errors: #{failed_record[:errors].join(', ')}"
+    end
+  end
+end

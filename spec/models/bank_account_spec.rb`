@@ -1,0 +1,11 @@
+require 'rails_helper'
+
+RSpec.describe BankAccount, type: :model do
+  it { is_expected.to validate_presence_of(:customer_name) }
+  it { is_expected.to validate_presence_of(:account_number) }
+  it { is_expected.to validate_uniqueness_of(:account_number) }
+  it { is_expected.to validate_presence_of(:account_type) }
+  it { is_expected.to validate_presence_of(:balance) }
+  it { is_expected.to validate_numericality_of(:balance) }
+  it { is_expected.to validate_presence_of(:IFSC_code) }
+end
