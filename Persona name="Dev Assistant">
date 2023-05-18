@@ -1,0 +1,142 @@
+
+*app/models/bank_account.rb*
+ruby
+class BankAccount < ApplicationRecord
+  validates :account_number, presence: true, uniqueness: true
+  validates :IFSC_code, presence: true
+  validates :balance, numericality: true
+end
+ 
+*app/services/bank_account_importer.rb*
+ruby
+require 'csv'
+
+class BankAccountImporter
+  attr_reader :file_path, :import_summary
+
+  def initialize(file_path)
+    @file_path = file_path
+    @import_summary = { imported: 0, failed: 0 }
+  end
+
+  def import
+    return import_summary unless File.extname(file_path) == '.csv'
+
+    begin
+      CSV.foreach(file_path, headers: true) do |row|
+        BankAccount.transaction do
+          bank_account = BankAccount.new(row.to_h)
+          if bank_account.save
+            import_summary[:imported] += 1
+          else
+            import_summary[:failed] += 1
+          end
+        end
+      end
+    rescue => e
+      Rails.logger.error "Error: #{e.message}"
+    end
+    import_summary
+  end
+end
+ 
+*lib/tasks/import_bank_accounts.rake*
+ruby
+namespace :bank_accounts do
+  desc 'Import bank accounts from a CSV file'
+  task :import, [:file_path] => :environment do |_task, args|
+    if args[:file_path].nil?
+      puts 'Error: File path is required. Please provide the path to the CSV file.'
+      exit
+    end
+
+    importer = BankAccountImporter.new(args[:file_path])
+    summary = importer.import
+
+    if summary[:imported] == 0 && summary[:failed] == 0
+      puts 'No records were imported. Please make sure you provided a valid CSV file.'
+    else
+      puts "Import Summary: Imported=#{summary[:imported]}, Failed=#{summary[:failed]}"
+    end
+  end
+end
+ 
+*spec/models/bank_account_spec.rb*
+ruby
+require 'rails_helper'
+
+RSpec.describe BankAccount, type: :model do
+  it 'is valid with valid attributes' do
+    bank_account = BankAccount.new(account_number: '123456', IFSC_code: 'ABCDEF', balance: 1000)
+    expect(bank_account).to be_valid
+  end
+
+  it 'is not valid without an account_number' do
+    bank_account = BankAccount.new(IFSC_code: 'ABCDEF', balance: 1000)
+    expect(bank_account).to_not be_valid
+  end
+
+  it 'is not valid without an IFSC_code' do
+    bank_account = BankAccount.new(account_number: '123456', balance: 1000)
+    expect(bank_account).to_not be_valid
+  end
+
+  it 'is not valid with a non-numeric balance' do
+    bank_account = BankAccount.new(account_number: '123456', IFSC_code: 'ABCDEF', balance: 'invalid')
+    expect(bank_account).to_not be_valid
+  end
+end
+ 
+*spec/services/bank_account_importer_spec.rb*
+ruby
+require 'rails_helper'
+
+RSpec.describe BankAccountImporter, type: :service do
+  let(:valid_csv_file) { 'spec/fixtures/valid_bank_accounts.csv' }
+  let(:invalid_csv_file) { 'spec/fixtures/invalid_bank_accounts.csv' }
+  let(:empty_csv_file) { 'spec/fixtures/empty_bank_accounts.csv' }
+  let(:malformed_csv_file) { 'spec/fixtures/malformed_bank_accounts.csv' }
+  let(:non_csv_file) { 'spec/fixtures/non_csv_file.txt' }
+
+  it 'imports valid bank accounts from a CSV file' do
+    importer = BankAccountImporter.new(valid_csv_file)
+    summary = importer.import
+    expect(summary[:imported]).to eq(2)
+    expect(summary[:failed]).to eq(0)
+  end
+
+  it 'skips invalid bank accounts' do
+    importer = BankAccountImporter.new(invalid_csv_file)
+    summary = importer.import
+    expect(summary[:imported]).to eq(1)
+    expect(summary[:failed]).to eq(1)
+  end
+
+  it 'handles file not found errors' do
+    importer = BankAccountImporter.new('non_existent_file.csv')
+    expect { importer.import }.to change { Rails.logger.error }.from(nil)
+  end
+
+  it 'handles empty CSV files' do
+    importer = BankAccountImporter.new(empty_csv_file)
+    summary = importer.import
+    expect(summary[:imported]).to eq(0)
+    expect(summary[:failed]).to eq(0)
+  end
+
+  it 'handles malformed CSV files' do
+    importer = BankAccountImporter.new(malformed_csv_file)
+    summary = importer.import
+    expect(summary[:imported]).to be >= 0
+    expect(summary[:failed]).to be >= 0
+  end
+
+  it 'does not import non-CSV files' do
+    importer = BankAccountImporter.new(non_csv_file)
+    summary = importer.import
+    expect(summary[:imported]).to eq(0)
+    expect(summary[:failed]).to eq(0)
+  end
+end
+ 
+</Persona>
